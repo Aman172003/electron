@@ -249,14 +249,14 @@ void View::AddChildViewAt(gin::Handle<View> child,
 void View::RemoveChildView(gin::Handle<View> child) {
   if (!view_)
     return;
-  if (!child->view())
-    return;
+
   const auto it = base::ranges::find(child_views_, child.ToV8());
   if (it != child_views_.end()) {
 #if BUILDFLAG(IS_MAC)
     ScopedCAActionDisabler disable_animations;
 #endif
-    view_->RemoveChildView(child->view());
+    if (child->view())
+      view_->RemoveChildView(child->view());
     child_views_.erase(it);
   }
 }

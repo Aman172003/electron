@@ -4,6 +4,9 @@ const v8Util = process._linkedBinding('electron_common_v8_util');
 
 export default class BrowserView {
   #webContentsView: WebContentsView;
+  #ownerWindow: BrowserWindow | null = null;
+
+  #destroyListener: ((e: any) => void) | null = null;
 
   // AutoResize state
   #resizeListener: ((...args: any[]) => void) | null = null;
@@ -17,6 +20,9 @@ export default class BrowserView {
     }
     webPreferences.type = 'browserView';
     this.#webContentsView = new WebContentsView({ webPreferences });
+
+    this.#destroyListener = this.#onDestroy.bind(this);
+    this.#webContentsView.webContents.once('destroyed', this.#destroyListener);
   }
 
   get webContents () {
@@ -55,21 +61,32 @@ export default class BrowserView {
 
   // Internal methods
   get ownerWindow (): BrowserWindow | null {
-    return !this.webContents.isDestroyed() ? this.webContents.getOwnerBrowserWindow() : null;
+    return this.#ownerWindow;
   }
 
   set ownerWindow (w: BrowserWindow | null) {
-    if (this.webContents.isDestroyed()) return;
-    const oldWindow = this.webContents.getOwnerBrowserWindow();
-    if (oldWindow && this.#resizeListener) {
-      oldWindow.off('resize', this.#resizeListener);
-      this.#resizeListener = null;
+    if (this.webContents && !this.webContents.isDestroyed()) {
+      const oldWindow = this.webContents.getOwnerBrowserWindow();
+      if (oldWindow && this.#resizeListener) {
+        oldWindow.off('resize', this.#resizeListener);
+        this.#resizeListener = null;
+      }
+      this.webContents._setOwnerWindow(w);
     }
-    this.webContents._setOwnerWindow(w);
+
+    this.#ownerWindow = w;
     if (w) {
       this.#lastWindowSize = w.getBounds();
       w.on('resize', this.#resizeListener = this.#autoResize.bind(this));
+      w.on('closed', () => {
+        this.#ownerWindow = null;
+        this.#destroyListener = null;
+      });
     }
+  }
+
+  #onDestroy () {
+    this.#ownerWindow?.contentView.removeChildView(this.webContentsView);
   }
 
   #autoHorizontalProportion: {width: number, left: number} | null = null;
